@@ -61,7 +61,7 @@ def test_invoice_query_param_sql_injection(setup_create_user):
         "Accept": "application/json"
     }
 
-    # Primero: obtener datos normales para comparación
+    #obtener datos normales para comparación
     print("\n[BASELINE] Obteniendo facturas sin filtros...")
     baseline_resp = requests.get("http://localhost:3000/api/invoices", headers=headers)
     print(f"[BASELINE] Status: {baseline_resp.status_code}")
@@ -113,7 +113,7 @@ def test_invoice_query_param_sql_injection(setup_create_user):
                         result_count = len(json_data)
                         print(f"[ANALYSIS] Retornó {result_count} registros")
                         
-                        # Si retorna datos cuando no debería (status='x' no existe)
+                        # si retorna datos cuando no debería (status='x' no existe)
                         if result_count > 0 and params.get("status") == "x":
                             is_vulnerable = True
                             reason.append(f"Retorna {result_count} registros con condición imposible (status='x')")
@@ -130,18 +130,18 @@ def test_invoice_query_param_sql_injection(setup_create_user):
                 except Exception as e:
                     print(f"[ERROR] No se pudo parsear JSON: {e}")
             
-            # 2. Comparación con control (sin inyección)
+            # Comparación con control (sin inyección)
             if "sin inyección" in description:
                 # Este es nuestro control, guardamos para comparar
                 control_status = resp.status_code
                 print(f"[CONTROL] Status del control: {control_status}")
             
-            # 3. Status 500 indica que el payload fue procesado y causó error SQL
+            # Status 500 indicaria que el payload fue procesado y causó error SQL
             if resp.status_code == 500:
                 is_vulnerable = True
                 reason.append("Error 500 - el payload llegó a la base de datos")
             
-            # 4. Mensajes de error SQL expuestos
+            # Mensajes de error SQL expuestos
             sql_error_indicators = [
                 "syntax error", "postgresql", "pg::", "column", 
                 "relation", "table", "database", "SQL", "query",
@@ -150,7 +150,7 @@ def test_invoice_query_param_sql_injection(setup_create_user):
             if any(indicator in resp.text.lower() for indicator in sql_error_indicators):
                 reason.append("Error SQL expuesto en respuesta")
             
-            # 5. Diferente comportamiento entre control y payload malicioso
+            # Diferente comportamiento entre control y payload malicioso
             if "OR 1=1" in str(params.values()) and resp.status_code != 200:
                 reason.append("Comportamiento anómalo con OR 1=1")
             
@@ -179,9 +179,9 @@ def test_invoice_query_param_sql_injection(setup_create_user):
     
     # Reporte final
     if vulnerabilities_found:
-        print("\n" + "="*80)
+        print("\n" + "="*77)
         print("⚠️  VULNERABILIDADES SQL INJECTION DETECTADAS:")
-        print("="*80)
+        print("="*77)
         for vuln in vulnerabilities_found:
             print(f"\n[VULNERABLE] {vuln['description']}")
             print(f"  Payload: {vuln['payload']}")
@@ -190,61 +190,8 @@ def test_invoice_query_param_sql_injection(setup_create_user):
             if vuln['result_count'] is not None:
                 print(f"  Registros retornados: {vuln['result_count']}")
             print(f"  Response: {vuln['response'][:200]}...")
-        print("\n" + "="*80)
+        print("\n" + "="*77)
         pytest.fail(f"🚨 Se detectaron {len(vulnerabilities_found)} vulnerabilidades de SQL injection")
     else:
         print("\n✅ No se detectaron vulnerabilidades de SQL injection")
         print("La aplicación está correctamente protegida")
-
-def test_invoice_query_param_simple(setup_create_user):
-    """Test simplificado del payload específico mencionado"""
-    username = setup_create_user[0]
-    password = setup_create_user[1]
-
-    response = requests.post("http://localhost:5000/auth/login", json={"username": username, "password": password})
-    auth_token = response.json()["token"]
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Accept": "application/json"
-    }
-
-    # El payload exacto de tu ejemplo
-    params = {"status": "x", "operator": "='x' OR 1=1 -- '"}
-    
-    print(f"\n[TEST] Probando payload: {params}")
-    resp = requests.get("http://localhost:3000/api/invoices", params=params, headers=headers)
-    
-    print(f"[RESULT] Status code: {resp.status_code}")
-    print(f"[RESULT] Response body: {resp.text}")
-    
-    # Analizar resultado
-    if resp.status_code == 200:
-        try:
-            data = resp.json()
-            count = len(data) if isinstance(data, list) else 0
-            print(f"[ANALYSIS] Retornó {count} registros")
-            
-            if count > 0:
-                print("⚠️  VULNERABLE: El payload OR 1=1 retornó datos cuando no debería")
-                assert False, f"SQL Injection detectado: retornó {count} registros con condición imposible"
-            else:
-                print("✅ La query retornó vacío (esperado con status='x')")
-        except:
-            print("⚠️  Respuesta no es JSON válido")
-    
-    elif resp.status_code == 500:
-        print("⚠️  Error 500: El payload llegó a la base de datos y causó un error")
-        print("    Esto indica que el parámetro no está siendo sanitizado correctamente")
-    
-    else:
-        print(f"✅ La aplicación rechazó el request con status {resp.status_code}")
-    
-    # Assertions
-    try:
-        json_response = resp.json() if resp.status_code == 200 else []
-        response_count = len(json_response) if isinstance(json_response, list) else 0
-    except:
-        response_count = 0
-    
-    assert resp.status_code != 200 or response_count == 0, \
-        f"La aplicación es vulnerable a SQL injection - retornó {response_count} registros"
