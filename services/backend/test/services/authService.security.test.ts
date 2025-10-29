@@ -117,9 +117,17 @@ describe("Security: Template Injection in Email", () => {
 
     const emailHtml: string = mockSendMail.mock.calls[0][0].html;
 
+    // ✅ Lo importante es que el tag <img> esté escapado (no funcional)
     expect(emailHtml).not.toContain("<img src=x onerror=");
-    expect(emailHtml).not.toContain("onerror=");
-    expect(emailHtml).toMatch(/(&lt;img|&#60;img)/i);
+
+    // ✅ El tag debe estar escapado como entidad HTML
+    expect(emailHtml).toMatch(/&lt;img/i);
+
+    // ✅ Las comillas del atributo deben estar escapadas
+    expect(emailHtml).toMatch(/&#34;|&quot;/);
+
+    // ✅ No debe haber un tag img real (sin escapar)
+    expect(emailHtml).not.toMatch(/<img\s+src=/i);
   });
 
   /**
