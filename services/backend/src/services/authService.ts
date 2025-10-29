@@ -16,7 +16,6 @@ class AuthService {
       .first();
     if (existing)
       throw new Error("User already exists with that username or email");
-
     // create invite token
     const invite_token = crypto.randomBytes(6).toString("hex");
     const invite_token_expires = new Date(Date.now() + INVITE_TTL);
@@ -30,7 +29,6 @@ class AuthService {
       invite_token_expires,
       activated: false,
     });
-
     // send invite email using nodemailer and local SMTP server
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -40,25 +38,16 @@ class AuthService {
         pass: process.env.SMTP_PASS,
       },
     });
-
     const link = `${process.env.FRONTEND_URL}/activate-user?token=${invite_token}&username=${user.username}`;
 
-    // ✅ MITIGACIÓN: Usar EJS con escape automático (<%= %>)
-    // En lugar de interpolación directa con ${}, usamos variables de EJS
-    const htmlBody = ejs.render(
-      `
+    const template = `
       <html>
         <body>
-          <h1>Hello <%= first_name %> <%= last_name %></h1>
-          <p>Click <a href="<%= link %>">here</a> to activate your account.</p>
+          <h1>Hello ${user.first_name} ${user.last_name}</h1>
+          <p>Click <a href="${link}">here</a> to activate your account.</p>
         </body>
-      </html>`,
-      {
-        first_name: user.first_name,
-        last_name: user.last_name,
-        link: link,
-      }
-    );
+      </html>`;
+    const htmlBody = ejs.render(template);
 
     await transporter.sendMail({
       from: "info@example.com",
