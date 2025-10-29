@@ -1,11 +1,15 @@
 {
-  "devDependencies": {
-    "@types/express": "^5.0.5"
-  },
   "dependencies": {
     "@types/axios": "^0.14.4",
     "axios": "^1.13.1",
     "ejs": "^3.1.10",
     "nodemailer": "^7.0.10"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.5",
+    "@types/jest": "^30.0.0",
+    "@types/nodemailer": "^7.0.3",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5"
   }
 }
