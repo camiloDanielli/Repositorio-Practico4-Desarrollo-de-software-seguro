@@ -13,7 +13,11 @@ docker compose -f "docker-compose.yaml" up -d --build
 
 2) Seed de datos (dentro del contenedor backend)
 ```
-docker compose exec backend npx knex seed:run --knexfile src/knexfile.ts
+2.1) Limpiar tablas primero, sinó dá errores que no permiten ejecutar
+docker compose exec backend npx knex migrate:rollback --all --knexfile src/knexfile.ts
+docker compose exec backend npx knex migrate:latest --knexfile src/knexfile.ts
+
+2.2) docker compose exec backend npx knex seed:run --knexfile src/knexfile.ts
 ```
 
 3) Accesos
