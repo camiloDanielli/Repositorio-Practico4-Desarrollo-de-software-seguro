@@ -12,9 +12,9 @@
  * MITIGACIÓN ESPERADA:
  * Escapar caracteres HTML especiales (<, >, &, ", ') antes de insertarlos en el template.
  *
- * COMPORTAMIENTO:
- * - Branch main: Tests FALLAN (vulnerabilidad presente)
- * - Branch practico-2: Tests PASAN (vulnerabilidad mitigada)
+ * COMPORTAMIENTO ESPERADO:
+ * - Branch main: los tests fallan si la vulnerabilidad sigue presente.
+ * - Branch practico-2: los tests pasan porque la vulnerabilidad está mitigada.
  */
 
 import nodemailer from "nodemailer";
@@ -34,13 +34,13 @@ describe("Security: Template Injection in Email", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Mock sendMail para capturar el HTML enviado
+    // Mock de sendMail para capturar el HTML que se intenta enviar
     mockSendMail = jest.fn().mockResolvedValue({ success: true });
     mockedNodemailer.createTransport.mockReturnValue({
       sendMail: mockSendMail,
     } as any);
 
-    // Mock DB - usuario no existe (permite creación)
+    // Mock DB: simulamos que el usuario no existe para permitir la creación
     const selectChain = {
       where: jest.fn().mockReturnThis(),
       orWhere: jest.fn().mockReturnThis(),
@@ -74,10 +74,10 @@ describe("Security: Template Injection in Email", () => {
     expect(mockSendMail).toHaveBeenCalledTimes(1);
     const emailHtml: string = mockSendMail.mock.calls[0][0].html;
 
-    // FAIL en main: El script NO debe estar sin escapar
+    // En la rama vulnerable (main) no debe aparecer el script sin escapar
     expect(emailHtml).not.toContain("<script>alert('Hackeado')</script>");
 
-    // PASS en practico-2: Debe estar escapado
+    // En la rama corregida (practico-2) el script debería aparecer escapado como entidad HTML
     expect(emailHtml).toMatch(/(&lt;script&gt;|&#60;script&#62;)/i);
   });
 
@@ -97,7 +97,9 @@ describe("Security: Template Injection in Email", () => {
 
     const emailHtml: string = mockSendMail.mock.calls[0][0].html;
 
+    // No debe contener la carga útil de script sin escapar
     expect(emailHtml).not.toContain("<script>document.location");
+    // Debe contener la versión escapada del tag script
     expect(emailHtml).toMatch(/(&lt;script&gt;|&#60;script&#62;)/i);
   });
 
@@ -117,16 +119,16 @@ describe("Security: Template Injection in Email", () => {
 
     const emailHtml: string = mockSendMail.mock.calls[0][0].html;
 
-    // ✅ Lo importante es que el tag <img> esté escapado (no funcional)
+    // Es importante que el tag <img> no quede funcional; no debe aparecer un atributo onerror sin escapar
     expect(emailHtml).not.toContain("<img src=x onerror=");
 
-    // ✅ El tag debe estar escapado como entidad HTML
+    // El tag debe estar escapado como entidad HTML (p. ej. &lt;img)
     expect(emailHtml).toMatch(/&lt;img/i);
 
-    // ✅ Las comillas del atributo deben estar escapadas
+    // Las comillas dentro de atributos deben estar escapadas también
     expect(emailHtml).toMatch(/&#34;|&quot;/);
 
-    // ✅ No debe haber un tag img real (sin escapar)
+    // No debe existir un tag img real sin escapar en el HTML
     expect(emailHtml).not.toMatch(/<img\s+src=/i);
   });
 
@@ -146,7 +148,9 @@ describe("Security: Template Injection in Email", () => {
 
     const emailHtml: string = mockSendMail.mock.calls[0][0].html;
 
+    // No debe quedar un iframe funcional
     expect(emailHtml).not.toContain("<iframe src=");
+    // Debe aparecer escapado como entidad HTML
     expect(emailHtml).toMatch(/(&lt;iframe|&#60;iframe)/i);
   });
 
@@ -166,7 +170,7 @@ describe("Security: Template Injection in Email", () => {
 
     const emailHtml: string = mockSendMail.mock.calls[0][0].html;
 
-    // No debe haber event handlers sin escapar
+    // No debe haber event handlers sin escapar en el HTML generado
     expect(emailHtml).not.toMatch(/<\w+[^>]*on\w+\s*=/i);
     expect(emailHtml).not.toContain("<div onload=");
     expect(emailHtml).not.toContain("<svg/onload=");
@@ -188,11 +192,11 @@ describe("Security: Template Injection in Email", () => {
 
     const emailHtml: string = mockSendMail.mock.calls[0][0].html;
 
-    // Nombres deben aparecer (pueden estar escaped si tienen chars especiales)
+    // Los nombres legítimos deben aparecer; si tienen caracteres especiales, pueden estar escapados
     expect(emailHtml).toMatch(/María|Mar.*a/);
     expect(emailHtml).toMatch(/Connor/);
 
-    // No debe contener scripts maliciosos
+    // No debe contener scripts maliciosos sin escapar
     expect(emailHtml).not.toContain("<script>");
   });
 });
