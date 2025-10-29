@@ -14,20 +14,66 @@ interface InvoiceRow {
 }
 
 class InvoiceService {
-  static async list( userId: string, status?: string, operator?: string): Promise<Invoice[]> {
-    let q = db<InvoiceRow>('invoices').where({ userId: userId });
-    if (status) q = q.andWhereRaw(" status "+ operator + " '"+ status +"'");
+  /**
+   * Lista facturas de un usuario con filtros opcionales
+   * ✅ MITIGACIÓN SQL INJECTION: Validación de inputs y consultas parametrizadas
+   */
+  static async list(userId: string, status?: string, operator?: string): Promise<Invoice[]> {
+    // Listas blancas
+    const allowedStatuses = ['paid', 'unpaid', 'pending'];
+
+    // 🔒 Validación del operador con expresión regular (solo símbolos seguros)
+    if (operator && !/^(=|==|!=|eq|ne)$/.test(operator.trim())) {
+      const err: any = new Error('Invalid operator');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 🔒 Validación del estado (solo valores permitidos)
+    if (status && !allowedStatuses.includes(status)) {
+      const err: any = new Error('Invalid status');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // 🔒 Validar formato del estado (evita inyecciones por caracteres especiales)
+    if (status && !/^[a-z]+$/i.test(status)) {
+      const err: any = new Error('Invalid status format');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Normalizar operador a formato SQL válido
+    const opMap: Record<string, string> = {
+      '=': '=',
+      '==': '=',
+      'eq': '=',
+      '!=': '!=',
+      'ne': '!='
+    };
+    const normalizedOperator = operator ? opMap[operator.trim()] || '=' : '=';
+
+    // Construcción segura de consulta con Knex (usa parametrización automática)
+    let q = db<InvoiceRow>('invoices').where({ userId });
+
+    if (status) {
+      q = q.where('status', normalizedOperator, status);
+    }
+
     const rows = await q.select();
-    const invoices = rows.map(row => ({
+
+    return rows.map(row => ({
       id: row.id,
       userId: row.userId,
       amount: row.amount,
       dueDate: row.dueDate,
-      status: row.status} as Invoice
-    ));
-    return invoices;
+      status: row.status
+    }));
   }
 
+  /**
+   * Asigna una tarjeta de pago y actualiza la factura como pagada
+   */
   static async setPaymentCard(
     userId: string,
     invoiceId: string,
@@ -36,54 +82,67 @@ class InvoiceService {
     ccv: string,
     expirationDate: string
   ) {
-    // use axios to call http://paymentBrand/payments as a POST request
-    // with the body containing ccNumber, ccv, expirationDate
-    // and handle the response accordingly
     const paymentResponse = await axios.post(`http://${paymentBrand}/payments`, {
       ccNumber,
       ccv,
       expirationDate
     });
+
     if (paymentResponse.status !== 200) {
       throw new Error('Payment failed');
     }
 
-    // Update the invoice status in the database
     await db('invoices')
       .where({ id: invoiceId, userId })
-      .update({ status: 'paid' });  
-    };
-  static async  getInvoice( invoiceId:string): Promise<Invoice> {
-    const invoice = await db<InvoiceRow>('invoices').where({ id: invoiceId }).first();
-    if (!invoice) {
-      throw new Error('Invoice not found');
+      .update({ status: 'paid' });
+  }
+
+  /**
+   * Obtiene una factura por ID
+   * ✅ MITIGACIÓN SQL INJECTION: Knex usa consultas parametrizadas por defecto
+   */
+  static async getInvoice(invoiceId: string): Promise<Invoice> {
+    if (!invoiceId || typeof invoiceId !== 'string' || /[^a-zA-Z0-9_-]/.test(invoiceId)) {
+      const err: any = new Error('Invalid invoice ID');
+      err.statusCode = 400;
+      throw err;
     }
+
+    const invoice = await db<InvoiceRow>('invoices').where({ id: invoiceId }).first();
+
+    if (!invoice) {
+      const err: any = new Error('Invoice not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
     return invoice as Invoice;
   }
 
-
-  static async getReceipt(
-    invoiceId: string,
-    pdfName: string
-  ) {
-    // check if the invoice exists
+  /**
+   * Retorna el recibo PDF de una factura si existe
+   */
+  static async getReceipt(invoiceId: string, pdfName: string) {
     const invoice = await db<InvoiceRow>('invoices').where({ id: invoiceId }).first();
     if (!invoice) {
-      throw new Error('Invoice not found');
+      const err: any = new Error('Invoice not found');
+      err.statusCode = 404;
+      throw err;
     }
+
     try {
-      const filePath = `/invoices/${pdfName}`;
+      // 🔒 Normalización del nombre del archivo (previene path traversal)
+      const safeName = path.basename(pdfName);
+      const filePath = path.join('/invoices', safeName);
       const content = await fs.readFile(filePath, 'utf-8');
       return content;
     } catch (error) {
-      // send the error to the standard output
       console.error('Error reading receipt file:', error);
-      throw new Error('Receipt not found');
-
-    } 
-
-  };
-
-};
+      const err: any = new Error('Receipt not found');
+      err.statusCode = 404;
+      throw err;
+    }
+  }
+}
 
 export default InvoiceService;
